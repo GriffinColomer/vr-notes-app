@@ -22,7 +22,7 @@ public class ControllerDrawing : MonoBehaviour
                 currentLine = Instantiate(line, currentControllerPosition, Quaternion.identity, this.transform);
                 currentLine.SetPosition(0, currentControllerPosition);
             }
-            if(Vector3.Distance(previousPosition, currentControllerPosition) > 0.01)
+            if(Vector3.Distance(previousPosition, currentControllerPosition) > 0.008)
             {
                 currentLine.positionCount++;
                 currentLine.SetPosition(currentLine.positionCount -1, currentControllerPosition);

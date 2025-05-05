@@ -9,23 +9,39 @@ using UnityEngine.UI;
 public class DigitalInkController : MonoBehaviour
 {
     [SerializeField] public GameObject textObject;
-    private static Boolean busy = false;
+    private static bool busy = false;
+    private string correctArea = "";
+    private TextMeshProUGUI document;
 
 
     void Start()
     {
-        textObject.GetComponent<TextMeshProUGUI>().text = "Hello";
+        document = textObject.GetComponent<TextMeshProUGUI>();
+        document.text = "";
     }
     void Update()
     {
-        float triggerLeft = OVRInput.Get(OVRInput.RawAxis1D.LIndexTrigger);
+        bool pressedA = OVRInput.Get(OVRInput.Button.One);
+        bool releasedB = OVRInput.GetUp(OVRInput.Button.Two);
+        bool releasedGrip = OVRInput.GetUp(OVRInput.Button.SecondaryHandTrigger);
 
-        if (triggerLeft > 0.9f && !busy)
+        if (pressedA && !busy)
         {
             busy = true;
 
             StartCoroutine(HandleRecognition());
         }
+
+        if(releasedB)
+        {
+            document.text = document.text.Remove(document.text.Length -1, 1);
+        }
+
+        if (releasedGrip)
+        {
+            document.text += " ";
+        }
+
     }
 
     private IEnumerator HandleRecognition()
@@ -37,17 +53,20 @@ public class DigitalInkController : MonoBehaviour
             LineRenderer line = child.gameObject.GetComponent<LineRenderer>();
             Vector3[] positions = new Vector3[line.positionCount];
             _ = line.GetPositions(positions);
-            List<Vector2> stroke = ProjectToLargestPlane(positions);
+            var (stroke, plane) = ProjectToLargestPlane(positions, correctArea);
+            correctArea = plane;
             strokes.Add(stroke);
             Destroy(child.gameObject);
         }
 
         strokes = NormalizeStrokes(strokes);
         string recognizedText = RecognizeInkInUnity(strokes);
-        textObject.GetComponent<TextMeshProUGUI>().text = "Recognized Text: " + recognizedText;
+        document.text += recognizedText;
         Debug.Log("[InkTest] Recognized Text: " + recognizedText);
 
-        yield return new WaitForSeconds(3f);
+        correctArea = "";
+
+        yield return new WaitForSeconds(1f);
         busy = false;
     }
 
@@ -91,48 +110,61 @@ public class DigitalInkController : MonoBehaviour
 #endif
     }
 
-    public static List<Vector2> ProjectToLargestPlane(Vector3[] points)
+    public static (List<Vector2>, string) ProjectToLargestPlane(Vector3[] points, string correctArea)
     {
-        if (points == null || points.Length == 0) return new List<Vector2>();
+        if (points == null || points.Length == 0) return (new List<Vector2>(), "");
+        List<Vector2> projected = new List<Vector2>();
 
-        float minX = float.MaxValue, maxX = float.MinValue;
-        float minY = float.MaxValue, maxY = float.MinValue;
-        float minZ = float.MaxValue, maxZ = float.MinValue;
-
-        foreach (var p in points)
+        if (correctArea != "")
         {
-            if (p.x < minX) minX = p.x;
-            if (p.x > maxX) maxX = p.x;
-
-            if (p.y < minY) minY = p.y;
-            if (p.y > maxY) maxY = p.y;
-
-            if (p.z < minZ) minZ = p.z;
-            if (p.z > maxZ) maxZ = p.z;
+            switch (correctArea)
+            {
+                case "xy":
+                    foreach (var p in points)
+                        projected.Add(new Vector2(p.x * 100, p.y * 100));
+                    return (projected, correctArea);
+                case "xz":
+                    foreach (var p in points)
+                        projected.Add(new Vector2(p.x * 100, p.z * 100));
+                    return (projected, correctArea);
+                case "yz":
+                    foreach (var p in points)
+                        projected.Add(new Vector2(p.y * 100, p.z * 100));
+                    return (projected, correctArea);
+            }
         }
+
+        float minX = points.Min(p => p.x);
+        float maxX = points.Max(p => p.x);
+        float minY = points.Min(p => p.y);
+        float maxY = points.Max(p => p.y);
+        float minZ = points.Min(p => p.z);
+        float maxZ = points.Max(p => p.z);
 
         float areaXY = (maxX - minX) * (maxY - minY);
         float areaXZ = (maxX - minX) * (maxZ - minZ);
         float areaYZ = (maxY - minY) * (maxZ - minZ);
 
-        List<Vector2> projected = new List<Vector2>();
         if (areaXY >= areaXZ && areaXY >= areaYZ)
         {
+            correctArea = "xy";
             foreach (var p in points)
                 projected.Add(new Vector2(p.x * 100, p.y * 100));
         }
         else if (areaXZ >= areaYZ)
         {
+            correctArea = "xz";
             foreach (var p in points)
                 projected.Add(new Vector2(p.x * 100, p.z * 100));
         }
         else
         {
+            correctArea = "yz";
             foreach (var p in points)
                 projected.Add(new Vector2(p.y * 100, p.z * 100));
         }
 
-        return projected;
+        return (projected, correctArea);
     }
 
     public static List<List<Vector2>> NormalizeStrokes(List<List<Vector2>> strokes, float targetSize = 300f)
