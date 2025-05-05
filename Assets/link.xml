@@ -1,0 +1,3 @@
+<linker>
+  <assembly fullname="Google.MLKit.DigitalInk" preserve="all"/>
+</linker>
